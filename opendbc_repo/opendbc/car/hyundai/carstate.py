@@ -220,8 +220,13 @@ class CarState(CarStateBase):
 
     ret.brakePressed = cp.vl["TCS"]["DriverBraking"] == 1
 
-    ret.doorOpen = cp.vl["DOORS_SEATBELTS"]["DRIVER_DOOR"] == 1
-    ret.seatbeltUnlatched = cp.vl["DOORS_SEATBELTS"]["DRIVER_SEATBELT"] == 0
+    if self.CP.flags & HyundaiFlags.CANFD_ALT_DOORS_BLINKERS:
+      ret.doorOpen = any([cp.vl["DOORS_ALT"]["DRIVER_DOOR"], cp.vl["DOORS_ALT"]["PASSENGER_DOOR"],
+                          cp.vl["DOORS_ALT"]["DRIVER_REAR_DOOR"], cp.vl["DOORS_ALT"]["PASSENGER_REAR_DOOR"]])
+      ret.seatbeltUnlatched = cp.vl["DOORS_SEATBELTS_ALT"]["DRIVER_SEATBELT"] == 0
+    else:
+      ret.doorOpen = cp.vl["DOORS_SEATBELTS"]["DRIVER_DOOR"] == 1
+      ret.seatbeltUnlatched = cp.vl["DOORS_SEATBELTS"]["DRIVER_SEATBELT"] == 0
 
     gear = cp.vl[self.gear_msg_canfd]["GEAR"]
     ret.gearShifter = self.parse_gear_shifter(self.shifter_values.get(gear))
@@ -243,12 +248,16 @@ class CarState(CarStateBase):
     ret.steeringPressed = self.update_steering_pressed(abs(ret.steeringTorque) > self.params.STEER_THRESHOLD, 5)
     ret.steerFaultTemporary = cp.vl["MDPS"]["LKA_FAULT"] != 0
 
-    # TODO: alt signal usage may be described by cp.vl['BLINKERS']['USE_ALT_LAMP']
-    left_blinker_sig, right_blinker_sig = "LEFT_LAMP", "RIGHT_LAMP"
-    if self.CP.carFingerprint == CAR.HYUNDAI_KONA_EV_2ND_GEN:
-      left_blinker_sig, right_blinker_sig = "LEFT_LAMP_ALT", "RIGHT_LAMP_ALT"
-    ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(50, cp.vl["BLINKERS"][left_blinker_sig],
-                                                                      cp.vl["BLINKERS"][right_blinker_sig])
+    if self.CP.flags & HyundaiFlags.CANFD_ALT_DOORS_BLINKERS:
+      ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(50, cp.vl["BLINKERS_ALT"]["LEFT_LAMP"],
+                                                                        cp.vl["BLINKERS_ALT"]["RIGHT_LAMP"])
+    else:
+      # TODO: alt signal usage may be described by cp.vl['BLINKERS']['USE_ALT_LAMP']
+      left_blinker_sig, right_blinker_sig = "LEFT_LAMP", "RIGHT_LAMP"
+      if self.CP.carFingerprint == CAR.HYUNDAI_KONA_EV_2ND_GEN:
+        left_blinker_sig, right_blinker_sig = "LEFT_LAMP_ALT", "RIGHT_LAMP_ALT"
+      ret.leftBlinker, ret.rightBlinker = self.update_blinker_from_lamp(50, cp.vl["BLINKERS"][left_blinker_sig],
+                                                                        cp.vl["BLINKERS"][right_blinker_sig])
     if self.CP.enableBsm:
       ret.leftBlindspot = cp.vl["BLINDSPOTS_REAR_CORNERS"]["FL_INDICATOR"] != 0
       ret.rightBlindspot = cp.vl["BLINDSPOTS_REAR_CORNERS"]["FR_INDICATOR"] != 0
@@ -303,10 +312,23 @@ class CarState(CarStateBase):
         # this message is 50Hz but the ECU frequently stops transmitting for ~0.5s
         ("CRUISE_BUTTONS", 1)
       ]
-    return {
+    # CCNC cars (Ioniq 5 N, Ioniq 6 N, etc.): ACCELERATOR and MANUAL_SPEED_LIMIT_ASSIST
+    # use +2 counter increment instead of +1, causing counter validation failure.
+    if CP.flags & HyundaiFlags.CCNC:
+      msgs += [("ACCELERATOR", 50), ("MANUAL_SPEED_LIMIT_ASSIST", 5)]
+
+    parsers = {
       Bus.pt: CANParser(DBC[CP.carFingerprint][Bus.pt], msgs, CanBus(CP).ECAN),
       Bus.cam: CANParser(DBC[CP.carFingerprint][Bus.pt], [], CanBus(CP).CAM),
     }
+
+    if CP.flags & HyundaiFlags.CCNC:
+      for addr in [0x35, 0x2E0]:  # ACCELERATOR, MANUAL_SPEED_LIMIT_ASSIST
+        if addr in parsers[Bus.pt].message_states:
+          parsers[Bus.pt].message_states[addr].ignore_counter = True
+          parsers[Bus.pt].message_states[addr].ignore_alive = True
+
+    return parsers
 
   def get_can_parsers(self, CP):
     if CP.flags & HyundaiFlags.CANFD:

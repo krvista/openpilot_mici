@@ -50,16 +50,16 @@ class CarInterface(CarInterfaceBase):
         ret.flags |= HyundaiFlags.HYBRID.value
 
       if lka_steering:
-        # detect LKA steering
         ret.flags |= HyundaiFlags.CANFD_LKA_STEERING.value
         if 0x110 in fingerprint[CAN.CAM]:
           ret.flags |= HyundaiFlags.CANFD_LKA_STEERING_ALT.value
       else:
-        # no LKA steering
-        if 0x1cf not in fingerprint[CAN.ECAN]:
-          ret.flags |= HyundaiFlags.CANFD_ALT_BUTTONS.value
         if not ret.flags & HyundaiFlags.RADAR_SCC:
           ret.flags |= HyundaiFlags.CANFD_CAMERA_SCC.value
+
+      # Alt buttons detection applies to both LKA and non-LKA steering cars
+      if 0x1cf not in fingerprint[CAN.ECAN]:
+        ret.flags |= HyundaiFlags.CANFD_ALT_BUTTONS.value
 
       # Some LKA steering cars have alternative messages for gear checks
       # ICE cars do not have 0x130; GEARS message on 0x40 or 0x70 instead

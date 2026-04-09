@@ -126,6 +126,11 @@ class HyundaiFlags(IntFlag):
 
   ALT_LIMITS_2 = 2 ** 26
 
+  CCNC = 2 ** 27
+
+  # These cars use different CAN addresses for doors, seatbelts, and blinkers
+  CANFD_ALT_DOORS_BLINKERS = 2 ** 28
+
 
 @dataclass
 class HyundaiCarDocs(CarDocs):
@@ -346,6 +351,11 @@ class CAR(Platforms):
     [HyundaiCarDocs("Hyundai Ioniq 6 (with HDA II) 2023-24", "Highway Driving Assist II", car_parts=CarParts.common([CarHarness.hyundai_p]))],
     HYUNDAI_IONIQ_5.specs,
     flags=HyundaiFlags.EV | HyundaiFlags.CANFD_NO_RADAR_DISABLE,
+  )
+  HYUNDAI_IONIQ_6_N = HyundaiCanFDPlatformConfig(
+    [HyundaiCarDocs("Hyundai Ioniq 6 N (with HDA II) 2026", "Highway Driving Assist II", car_parts=CarParts.common([CarHarness.hyundai_p]))],
+    CarSpecs(mass=2175, wheelbase=2.965, steerRatio=14.26, tireStiffnessFactor=1.1),
+    flags=HyundaiFlags.EV | HyundaiFlags.CANFD_NO_RADAR_DISABLE | HyundaiFlags.CCNC | HyundaiFlags.CANFD_ALT_DOORS_BLINKERS,
   )
   HYUNDAI_TUCSON_4TH_GEN = HyundaiCanFDPlatformConfig(
     [
